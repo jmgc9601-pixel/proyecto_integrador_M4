@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { ThemeToggle } from '../../components/common/ThemeToggle'
 
 /**
  * Traduce códigos de error de Firebase Authentication para el registro de usuarios.
@@ -42,19 +43,28 @@ export const Register = () => {
     e.preventDefault()
     setErrorMessage(null)
 
-    // Validaciones de campos obligatorios
-    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
-      setErrorMessage('Por favor, completa todos los campos.')
+    const trimmedEmail = email.trim()
+
+    // 1. Validaciones de campos obligatorios
+    if (!trimmedEmail || !password.trim() || !confirmPassword.trim()) {
+      setErrorMessage('Por favor, completa todos los campos obligatorios.')
       return
     }
 
-    // Validación de longitud mínima de contraseña
+    // 2. Validación de formato de email con regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(trimmedEmail)) {
+      setErrorMessage('Por favor, ingresa un correo electrónico válido (ej. usuario@dominio.com).')
+      return
+    }
+
+    // 3. Validación de longitud mínima de contraseña (al menos 6 caracteres)
     if (password.length < 6) {
       setErrorMessage('La contraseña debe tener al menos 6 caracteres.')
       return
     }
 
-    // Validación de coincidencia de contraseñas
+    // 4. Validación de coincidencia de contraseñas
     if (password !== confirmPassword) {
       setErrorMessage('Las contraseñas no coinciden.')
       return
@@ -62,7 +72,7 @@ export const Register = () => {
 
     try {
       setIsSubmitting(true)
-      await register(email.trim(), password)
+      await register(trimmedEmail, password)
       navigate('/dashboard')
     } catch (err: unknown) {
       setErrorMessage(getRegisterErrorMessage(err))
@@ -72,19 +82,31 @@ export const Register = () => {
   }
 
   return (
-    <div className="app-container" style={{ minHeight: '80vh', justifyContent: 'center' }}>
+    <div
+      className="app-container"
+      style={{
+        minHeight: '85vh',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      {/* Botón flotante superior de cambio de tema */}
+      <div style={{ width: '100%', maxWidth: '440px', display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+        <ThemeToggle compact />
+      </div>
+
       <div
         className="card"
         style={{
           maxWidth: '440px',
-          margin: '0 auto',
           width: '100%',
+          boxShadow: 'var(--shadow-md)',
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <h1
             style={{
-              fontSize: '26px',
+              fontSize: '28px',
               fontWeight: 800,
               color: 'var(--primary)',
               letterSpacing: '-0.5px',
@@ -94,7 +116,7 @@ export const Register = () => {
             MateCode
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Crea tu cuenta y organiza tus proyectos
+            Crea tu cuenta y organiza tus proyectos de forma inteligente
           </p>
         </div>
 
@@ -150,14 +172,14 @@ export const Register = () => {
               htmlFor="register-password"
               style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}
             >
-              Contraseña
+              Contraseña (mínimo 6 caracteres)
             </label>
             <input
               id="register-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="••••••••"
               disabled={isSubmitting}
               required
               style={{
@@ -235,4 +257,3 @@ export const Register = () => {
     </div>
   )
 }
-

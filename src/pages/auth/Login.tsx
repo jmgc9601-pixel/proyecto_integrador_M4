@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { ThemeToggle } from '../../components/common/ThemeToggle'
 
 /**
  * Traduce códigos de error de Firebase Authentication a mensajes comprensibles para el usuario.
@@ -45,7 +46,7 @@ export const Login = () => {
 
     // Validación de campos vacíos
     if (!email.trim() || !password.trim()) {
-      setErrorMessage('Por favor, completa todos los campos.')
+      setErrorMessage('Por favor, completa todos los campos obligatorios.')
       return
     }
 
@@ -61,19 +62,31 @@ export const Login = () => {
   }
 
   return (
-    <div className="app-container" style={{ minHeight: '80vh', justifyContent: 'center' }}>
+    <div
+      className="app-container"
+      style={{
+        minHeight: '85vh',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      {/* Botón flotante superior de cambio de tema */}
+      <div style={{ width: '100%', maxWidth: '440px', display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+        <ThemeToggle compact />
+      </div>
+
       <div
         className="card"
         style={{
           maxWidth: '440px',
-          margin: '0 auto',
           width: '100%',
+          boxShadow: 'var(--shadow-md)',
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <h1
             style={{
-              fontSize: '26px',
+              fontSize: '28px',
               fontWeight: 800,
               color: 'var(--primary)',
               letterSpacing: '-0.5px',
@@ -83,7 +96,7 @@ export const Login = () => {
             MateCode
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Inicia sesión para gestionar tus tareas
+            Inicia sesión para gestionar tus tareas y proyectos
           </p>
         </div>
 
@@ -196,4 +209,3 @@ export const Login = () => {
     </div>
   )
 }
-

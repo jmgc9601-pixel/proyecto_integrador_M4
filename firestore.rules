@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==============================================================================
+    // Reglas de Seguridad para la Colección 'tasks' de MateCode
+    // ==============================================================================
+    match /tasks/{taskId} {
+      
+      // 1. Lectura individual (get): Solo el dueño del documento puede leerlo
+      allow get: if request.auth != null 
+                 && resource.data.userId == request.auth.uid;
+
+      // 2. Consulta en lista (list): La consulta DEBE filtrar estrictamente por where('userId', '==', request.auth.uid)
+      allow list: if request.auth != null 
+                  && resource.data.userId == request.auth.uid;
+
+      // 3. Creación (create): 
+      // - El usuario debe estar autenticado.
+      // - El userId debe coincidir con su UID (no puede suplantar a otro usuario).
+      // - El título debe ser un texto no vacío.
+      // - El estado y la prioridad deben tener valores válidos.
+      allow create: if request.auth != null 
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.title is string 
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.status in ['pending', 'in_progress', 'completed']
+                    && request.resource.data.priority in ['low', 'medium', 'high']
+                    && request.resource.data.createdAt is number
+                    && request.resource.data.updatedAt is number;
+
+      // 4. Modificación (update):
+      // - El documento existente debe pertenecer al usuario autenticado.
+      // - No se permite cambiar el propietario original (inmutabilidad de userId).
+      // - El título debe seguir siendo válido.
+      allow update: if request.auth != null 
+                    && resource.data.userId == request.auth.uid 
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.title is string 
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.status in ['pending', 'in_progress', 'completed']
+                    && request.resource.data.priority in ['low', 'medium', 'high']
+                    && request.resource.data.updatedAt is number;
+
+      // 5. Eliminación (delete): Solo el propietario de la tarea puede borrarla
+      allow delete: if request.auth != null 
+                    && resource.data.userId == request.auth.uid;
+    }
+
+    // ==============================================================================
+    // Regla por defecto: Bloqueo total de cualquier otra colección o documento
+    // ==============================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

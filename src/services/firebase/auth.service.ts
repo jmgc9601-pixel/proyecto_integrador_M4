@@ -3,27 +3,39 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  setPersistence,
+  browserSessionPersistence,
 } from 'firebase/auth'
 import type { User, UserCredential, Unsubscribe } from 'firebase/auth'
 import { auth } from './config'
 
+// Configurar persistencia a nivel de sesión del navegador (sessionStorage).
+// Al cerrar la pestaña o la ventana del navegador, la sesión se destruye automáticamente.
+setPersistence(auth, browserSessionPersistence).catch(() => {
+  // Manejo seguro para entornos donde sessionStorage esté restringido
+})
+
 /**
  * Registra un nuevo usuario utilizando correo electrónico y contraseña.
+ * Asegura que la sesión solo persista mientras la pestaña permanezca abierta.
  */
 export const registerUser = async (
   email: string,
   password: string
 ): Promise<UserCredential> => {
+  await setPersistence(auth, browserSessionPersistence)
   return createUserWithEmailAndPassword(auth, email, password)
 }
 
 /**
  * Inicia sesión con correo electrónico y contraseña existentes.
+ * Asegura que la sesión solo persista mientras la pestaña permanezca abierta.
  */
 export const loginUser = async (
   email: string,
   password: string
 ): Promise<UserCredential> => {
+  await setPersistence(auth, browserSessionPersistence)
   return signInWithEmailAndPassword(auth, email, password)
 }
 
@@ -43,4 +55,3 @@ export const subscribeToAuthChanges = (
 ): Unsubscribe => {
   return onAuthStateChanged(auth, callback)
 }
-
