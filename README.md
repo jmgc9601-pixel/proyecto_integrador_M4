@@ -187,7 +187,7 @@ Para ejecutar el proyecto localmente se necesita:
 ### 1. Clonar el repositorio
 
 ```bash
-git clone <https://github.com/jmgc9601-pixel/proyecto_integrador_M4.git>
+git clone https://github.com/jmgc9601-pixel/proyecto_integrador_M4.git
 ```
 
 ### 2. Entrar al directorio
@@ -373,7 +373,7 @@ Los servicios externos se simulan mediante mocks para evitar conexiones reales a
 
 La aplicación está preparada para desplegarse en Vercel.
 
-**URL de producción:** `<https://proyecto-integrador-m4-f0gn7m8dl-jmgc9601-pixel.vercel.app>`
+**URL de producción:** `https://proyecto-integrador-m4-f0gn7m8dl-jmgc9601-pixel.vercel.app`
 
 ### Consideraciones para el despliegue
 
@@ -449,7 +449,7 @@ La compilación puede mostrar una advertencia de Vite relacionada con el tamaño
 
 ## Autor
 
-**Desarrollador:** `<Juan Garcia>`
+**Desarrollador:** `Juan Garcia`
 
 **Proyecto:** MateCode
 
@@ -457,9 +457,9 @@ La compilación puede mostrar una advertencia de Vite relacionada con el tamaño
 
 **Módulo:** M4 — Proyecto integrador
 
-**Repositorio:** `<https://github.com/jmgc9601-pixel/proyecto_integrador_M4.git>`
+**Repositorio:** `https://github.com/jmgc9601-pixel/proyecto_integrador_M4.git`
 
-**Aplicación desplegada:** `<https://proyecto-integrador-m4-f0gn7m8dl-jmgc9601-pixel.vercel.app>`
+**Aplicación desplegada:** `https://proyecto-integrador-m4-f0gn7m8dl-jmgc9601-pixel.vercel.app`
 
 ---
 
