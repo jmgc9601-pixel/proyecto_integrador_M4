@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
+import type { DecodedIdToken } from 'firebase-admin/auth'
+import { adminAuth } from './lib/firebase-admin.js'
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -10,43 +12,7 @@ type EmailNotificationType = 'task_created' | 'task_completed'
 interface EmailRequestBody {
   type: EmailNotificationType
   taskTitle: string
-  userEmail: string
 }
-
-interface TokenInfoResponse {
-  email?: string
-  error?: string
-  error_description?: string
-}
-
-// ---------------------------------------------------------------------------
-// Validación del token de Firebase (mediante Google tokeninfo REST endpoint)
-// ---------------------------------------------------------------------------
-
-/**
- * Valida el ID token de Firebase usando la API pública de Google.
- * Devuelve el email del usuario si el token es válido, o lanza un error.
- */
-const verifyFirebaseToken = async (idToken: string): Promise<string> => {
-  const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-
-  const res = await fetch(url)
-  const data = (await res.json()) as TokenInfoResponse
-
-  if (!res.ok || data.error) {
-    throw new Error(data.error_description ?? 'Token inválido o expirado.')
-  }
-
-  if (!data.email) {
-    throw new Error('No se pudo extraer el email del token.')
-  }
-
-  return data.email
-}
-
-// ---------------------------------------------------------------------------
-// Contenido del correo según el tipo de evento
-// ---------------------------------------------------------------------------
 
 interface EmailContent {
   subject: string
@@ -54,7 +20,26 @@ interface EmailContent {
   text: string
 }
 
-const buildEmailContent = (type: EmailNotificationType, taskTitle: string): EmailContent => {
+// ---------------------------------------------------------------------------
+// Escapar caracteres HTML
+// ---------------------------------------------------------------------------
+
+const escapeHtml = (str: string): string =>
+  str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+
+// ---------------------------------------------------------------------------
+// Construir contenido del correo
+// ---------------------------------------------------------------------------
+
+const buildEmailContent = (
+  type: EmailNotificationType,
+  taskTitle: string
+): EmailContent => {
   if (type === 'task_created') {
     return {
       subject: `📝 Nueva tarea creada: "${taskTitle}"`,
@@ -74,7 +59,6 @@ const buildEmailContent = (type: EmailNotificationType, taskTitle: string): Emai
     }
   }
 
-  // task_completed
   return {
     subject: `✅ Tarea completada: "${taskTitle}"`,
     html: `
@@ -93,21 +77,16 @@ const buildEmailContent = (type: EmailNotificationType, taskTitle: string): Emai
   }
 }
 
-/** Escapa caracteres HTML para evitar inyecciones en el cuerpo del correo. */
-const escapeHtml = (str: string): string =>
-  str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-
 // ---------------------------------------------------------------------------
 // Helpers HTTP
 // ---------------------------------------------------------------------------
 
-const sendJson = (res: ServerResponse, status: number, body: Record<string, unknown>): void => {
-  res.setHeader('Content-Type', 'application/json')
+const sendJson = (
+  res: ServerResponse,
+  status: number,
+  body: Record<string, unknown>
+): void => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.statusCode = status
   res.end(JSON.stringify(body))
 }
@@ -115,6 +94,7 @@ const sendJson = (res: ServerResponse, status: number, body: Record<string, unkn
 const readBody = (req: IncomingMessage): Promise<string> =>
   new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
+
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
     req.on('error', reject)
@@ -124,79 +104,123 @@ const readBody = (req: IncomingMessage): Promise<string> =>
 // Handler principal — Vercel Serverless Function
 // ---------------------------------------------------------------------------
 
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  // 1. Solo aceptamos POST
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+
+  // 1. Validar método HTTP
   if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Método no permitido. Solo se aceptan solicitudes POST.' })
+    sendJson(res, 405, {
+      error: 'Método no permitido. Solo se aceptan solicitudes POST.',
+    })
     return
   }
 
-  // 2. Leer y parsear el cuerpo de la solicitud
-  let body: EmailRequestBody
+  // 2. Leer y parsear el body
+  let body: unknown
+
   try {
     const raw = await readBody(req)
-    body = JSON.parse(raw) as EmailRequestBody
+    body = JSON.parse(raw)
   } catch {
-    sendJson(res, 400, { error: 'El cuerpo de la solicitud no es JSON válido.' })
+    sendJson(res, 400, {
+      error: 'El cuerpo de la solicitud no es JSON válido.',
+    })
     return
   }
 
-  // 3. Validar campos obligatorios
-  const { type, taskTitle, userEmail } = body
-
-  if (!type || !taskTitle || !userEmail) {
-    sendJson(res, 400, { error: 'Faltan campos obligatorios: type, taskTitle, userEmail.' })
+  // 3. Validar estructura del body
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('type' in body) ||
+    !('taskTitle' in body)
+  ) {
+    sendJson(res, 400, {
+      error: 'Faltan campos obligatorios.',
+    })
     return
   }
+
+  const { type, taskTitle } = body as EmailRequestBody
 
   if (type !== 'task_created' && type !== 'task_completed') {
-    sendJson(res, 400, { error: 'El campo "type" debe ser "task_created" o "task_completed".' })
+    sendJson(res, 400, {
+      error: 'El campo "type" debe ser "task_created" o "task_completed".',
+    })
     return
   }
 
-  if (typeof taskTitle !== 'string' || taskTitle.trim() === '') {
-    sendJson(res, 400, { error: 'El campo "taskTitle" debe ser una cadena no vacía.' })
-    return
-  }
-
-  if (typeof userEmail !== 'string' || !userEmail.includes('@')) {
-    sendJson(res, 400, { error: 'El campo "userEmail" no es un email válido.' })
+  if (
+    typeof taskTitle !== 'string' ||
+    taskTitle.trim() === ''
+  ) {
+    sendJson(res, 400, {
+      error: 'El campo "taskTitle" debe ser una cadena no vacía.',
+    })
     return
   }
 
   // 4. Validar token de Firebase Authentication
-  const authHeader = req.headers['authorization']
+  const authHeader = req.headers.authorization
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    sendJson(res, 401, { error: 'Token de autenticación requerido.' })
+    sendJson(res, 401, {
+      error: 'Token de autenticación requerido.',
+    })
     return
   }
 
   const idToken = authHeader.slice(7)
 
+  let decodedToken: DecodedIdToken
+
   try {
-    await verifyFirebaseToken(idToken)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Token inválido.'
-    sendJson(res, 401, { error: `Autenticación fallida: ${message}` })
-    return
-  }
-
-  // 5. Verificar que las credenciales de AWS estén configuradas
-  const { AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, SES_FROM_EMAIL } = process.env
-
-  if (!AWS_REGION || !AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !SES_FROM_EMAIL) {
-    // Degradación elegante: logueamos pero no bloqueamos al usuario
-    console.warn(
-      '[send-email] Variables de entorno de AWS no configuradas. El correo no se enviará.'
-    )
-    sendJson(res, 200, {
-      success: true,
-      message: 'Notificación registrada (AWS SES no está configurado en este entorno).',
+    decodedToken = await adminAuth.verifyIdToken(idToken)
+  } catch {
+    sendJson(res, 401, {
+      error: 'Token inválido o expirado.',
     })
     return
   }
 
-  // 6. Construir y enviar el correo mediante AWS SES
+  // El correo se obtiene exclusivamente del token autenticado
+  const userEmail = decodedToken.email
+
+  if (!userEmail) {
+    sendJson(res, 401, {
+      error: 'El usuario autenticado no tiene un correo asociado.',
+    })
+    return
+  }
+
+  // 5. Verificar configuración de AWS
+  const {
+    AWS_REGION,
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    SES_FROM_EMAIL,
+  } = process.env
+
+  if (
+    !AWS_REGION ||
+    !AWS_ACCESS_KEY_ID ||
+    !AWS_SECRET_ACCESS_KEY ||
+    !SES_FROM_EMAIL
+  ) {
+    console.warn(
+      '[send-email] Variables de entorno de AWS no configuradas.'
+    )
+
+sendJson(res, 503, {
+  success: false,
+  error: 'El servicio de correo no está configurado.',
+})
+    return
+  }
+
+  // 6. Configurar AWS SES
   const sesClient = new SESClient({
     region: AWS_REGION,
     credentials: {
@@ -205,6 +229,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     },
   })
 
+  // 7. Construir correo
   const emailContent = buildEmailContent(type, taskTitle.trim())
 
   const command = new SendEmailCommand({
@@ -230,15 +255,22 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     },
   })
 
+  // 8. Enviar correo
   try {
     await sesClient.send(command)
-    sendJson(res, 200, { success: true, message: 'Correo enviado correctamente.' })
+
+    sendJson(res, 200, {
+      success: true,
+      message: 'Correo enviado correctamente.',
+    })
   } catch (err) {
-    // No exponemos detalles internos del error al cliente
-    console.error('[send-email] Error al enviar correo con AWS SES:', err)
+    console.error(
+      '[send-email] Error al enviar correo con AWS SES:',
+      err
+    )
+
     sendJson(res, 500, {
       error: 'No se pudo enviar el correo. Inténtalo de nuevo más tarde.',
     })
   }
 }
-
